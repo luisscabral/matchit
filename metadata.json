@@ -1,0 +1,5 @@
+{
+  "name": "Match It - Custom Dobble Game",
+  "description": "A mobile-friendly matching game inspired by Dobble, where users find the single matching symbol between two cards.",
+  "requestFramePermissions": []
+}

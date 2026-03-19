@@ -1,0 +1,36 @@
+{
+  "entities": {
+    "Profile": {
+      "title": "Profile",
+      "description": "Simple user profile",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Display name" },
+        "highScore": { "type": "integer", "description": "Highest score" },
+        "lastPlayed": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Score": {
+      "title": "Score",
+      "description": "Game score",
+      "type": "object",
+      "properties": {
+        "profileName": { "type": "string" },
+        "score": { "type": "integer" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["profileName", "score", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/profiles/{profileName}": {
+      "schema": "Profile",
+      "description": "Public profiles"
+    },
+    "/scores/{scoreId}": {
+      "schema": "Score",
+      "description": "Global leaderboard"
+    }
+  }
+}

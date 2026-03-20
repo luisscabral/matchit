@@ -2182,7 +2182,7 @@ function StatsPanel({ onBack }: { onBack: () => void }) {
                         </div>
                         <div className="bg-black/20 rounded-lg p-2.5">
                           <div className="text-white/40 text-[9px] uppercase tracking-wider mb-0.5">Hit Rate</div>
-                          <div className="font-black">{hitRate !== null ? `${hitRate}%` : '—'}</div>
+                          <div className="font-black">{hitRate !== null ? `${hitRate}%` : '0%'}</div>
                         </div>
                       </div>
                       {totalAttempts > 0 && (

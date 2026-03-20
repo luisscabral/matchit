@@ -2,14 +2,15 @@
   "entities": {
     "Profile": {
       "title": "Profile",
-      "description": "Simple user profile",
+      "description": "User profile scoped to a Google account",
       "type": "object",
       "properties": {
         "name": { "type": "string", "description": "Display name" },
+        "userId": { "type": "string", "description": "Google Auth UID" },
         "highScore": { "type": "integer", "description": "Highest score" },
         "lastPlayed": { "type": "string", "format": "date-time" }
       },
-      "required": ["name"]
+      "required": ["name", "userId"]
     },
     "Score": {
       "title": "Score",
@@ -17,20 +18,37 @@
       "type": "object",
       "properties": {
         "profileName": { "type": "string" },
+        "userId": { "type": "string", "description": "Google Auth UID" },
         "score": { "type": "integer" },
         "timestamp": { "type": "string", "format": "date-time" }
       },
-      "required": ["profileName", "score", "timestamp"]
+      "required": ["profileName", "userId", "score", "timestamp"]
+    },
+    "CustomTheme": {
+      "title": "Custom Theme",
+      "description": "User created custom theme",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "description": "Theme name" },
+        "userId": { "type": "string", "description": "Google Auth UID" },
+        "emojis": { "type": "array", "items": { "type": "string" }, "description": "Array of 57 emojis" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "userId", "emojis", "createdAt"]
     }
   },
   "firestore": {
-    "/profiles/{profileName}": {
+    "/profiles/{profileId}": {
       "schema": "Profile",
-      "description": "Public profiles"
+      "description": "User profiles"
     },
     "/scores/{scoreId}": {
       "schema": "Score",
       "description": "Global leaderboard"
+    },
+    "/customThemes/{themeId}": {
+      "schema": "CustomTheme",
+      "description": "User custom themes"
     }
   }
 }

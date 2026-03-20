@@ -516,10 +516,17 @@ function DobbleGame() {
   const ThemeToggle = () => (
     <button
       onClick={() => setVisualTheme(v => v === 'modern' ? 'retro' : 'modern')}
-      className={`fixed top-3 right-3 z-[200] p-2 rounded-lg transition-all ${isRetro ? 'retro-btn text-xs' : 'bg-white/10 backdrop-blur-lg border border-white/20 text-white hover:bg-white/20'}`}
+      className={`fixed top-4 right-4 z-[200] flex items-center gap-2 px-3 py-2 rounded-xl transition-all ${
+        isRetro
+          ? 'retro-btn text-[8px] tracking-wider'
+          : 'bg-white/15 backdrop-blur-lg border border-white/25 text-white hover:bg-white/25 shadow-lg hover:shadow-xl hover:-translate-y-0.5'
+      }`}
       title={isRetro ? 'Switch to Modern' : 'Switch to Retro'}
     >
-      {isRetro ? '✨' : '👾'}
+      <span className="text-lg">{isRetro ? '✨' : '👾'}</span>
+      <span className={isRetro ? '' : 'text-[10px] font-bold uppercase tracking-widest opacity-80'}>
+        {isRetro ? 'MODERN' : 'RETRO'}
+      </span>
     </button>
   );
 
@@ -1403,7 +1410,7 @@ function DobbleGame() {
                 { key: 'standard' as Theme, icon: '🦁', label: 'Standard' },
                 { key: 'nature' as Theme, icon: '🌸', label: 'Nature' },
                 { key: 'fruits' as Theme, icon: '🍓', label: 'Fruits' },
-                { key: 'landmarks' as Theme, icon: '🏔️', label: 'Landmarks' },
+                // { key: 'landmarks' as Theme, icon: '🏔️', label: 'Landmarks' }, // TODO: improve image quality before enabling
               ] as const).map(({ key, icon, label }) => {
                 const isActive = theme === key;
                 const cls = isRetro

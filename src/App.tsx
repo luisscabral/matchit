@@ -1699,6 +1699,20 @@ function DobbleGame() {
                   <AnimatedCounter value={score} fontSize={14} />
                 </div>
               </div>
+              {(correctClicks + incorrectClicks) > 0 && (
+                <div className={`ml-1 pl-2 border-l ${isRetro ? 'border-[var(--retro-border)]' : 'border-white/20'}`}>
+                  <div className={`text-[8px] font-black uppercase tracking-[0.2em] mb-0 ${isRetro ? 'text-[var(--retro-text-dim)]' : 'text-white/50'}`}>Accuracy</div>
+                  <div className={`font-black text-sm leading-none ${
+                    Math.round((correctClicks / (correctClicks + incorrectClicks)) * 100) >= 80
+                      ? (isRetro ? 'text-[var(--retro-green)]' : 'text-green-400')
+                      : Math.round((correctClicks / (correctClicks + incorrectClicks)) * 100) >= 50
+                        ? (isRetro ? 'text-[var(--retro-gold)]' : 'text-yellow-400')
+                        : (isRetro ? 'text-[var(--retro-red)]' : 'text-red-400')
+                  }`}>
+                    {Math.round((correctClicks / (correctClicks + incorrectClicks)) * 100)}%
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

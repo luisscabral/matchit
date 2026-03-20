@@ -13,8 +13,9 @@ import {
   db, 
   doc, 
   setDoc, 
-  getDoc, 
-  collection, 
+  getDoc,
+  getDocs,
+  collection,
   query, 
   orderBy, 
   limit, 
@@ -294,9 +295,69 @@ const Leaderboard = ({ data, onSelect }: { data: any[], onSelect?: (name: string
   </div>
 );
 
-const ProfileSelector = ({ 
-  profiles, 
-  onSelect, 
+const GlobalLeaderboard = ({ data, currentUserId, isLoading, isRetro, onRefresh }: { data: any[], currentUserId?: string, isLoading: boolean, isRetro: boolean, onRefresh: () => void }) => (
+  <div className="text-left w-full">
+    <div className="flex items-center gap-2 mb-6">
+      <div className={`h-[1px] flex-1 ${isRetro ? 'bg-[var(--retro-border)]' : 'bg-white/20'}`}></div>
+      <span className={`text-[10px] font-bold uppercase tracking-[0.2em] ${isRetro ? 'text-[var(--retro-text-dim)] text-[8px]' : 'text-white/40'}`}>
+        Global Top 20
+      </span>
+      <button onClick={onRefresh} className={`transition ${isRetro ? 'text-[var(--retro-text-dim)] hover:text-[var(--retro-cyan)]' : 'text-white/40 hover:text-white/70'}`}>
+        <RefreshCw className={`w-3 h-3 ${isLoading ? 'animate-spin' : ''}`} />
+      </button>
+      <div className={`h-[1px] flex-1 ${isRetro ? 'bg-[var(--retro-border)]' : 'bg-white/20'}`}></div>
+    </div>
+    <div className={`rounded-2xl overflow-hidden ${isRetro ? 'retro-panel rounded-xl' : 'bg-black/20 border border-white/10 backdrop-blur-md'}`}>
+      {data.length === 0 && (
+        <div className={`p-4 text-sm text-center ${isRetro ? 'text-[var(--retro-text-dim)]' : 'text-white/40'}`}>
+          {isLoading ? 'Loading...' : 'No scores yet'}
+        </div>
+      )}
+      {data.map((entry) => (
+        <div
+          key={entry.id}
+          className={`flex items-center justify-between p-3 border-b last:border-0 ${
+            isRetro
+              ? `border-[var(--retro-border)] ${entry.rank === 1 ? 'bg-[var(--retro-gold)]/10' : ''} ${entry.userId === currentUserId ? 'border-l-2 border-l-[var(--retro-cyan)]' : ''}`
+              : `border-white/5 ${entry.rank === 1 ? 'bg-yellow-400/10' : ''} ${entry.userId === currentUserId ? 'bg-purple-500/10 border-l-2 border-l-purple-400' : ''}`
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <span className={`w-6 text-center font-bold ${
+              isRetro
+                ? entry.rank === 1 ? 'text-[var(--retro-gold)]' : 'text-[var(--retro-text-dim)]'
+                : entry.rank === 1 ? 'text-yellow-400' : 'text-white/40'
+            }`}>{entry.rank}</span>
+            <span className={`font-medium truncate max-w-[150px] ${isRetro ? 'text-[var(--retro-text)]' : 'text-white'}`}>{entry.profileName}</span>
+          </div>
+          <span className={`font-black ${isRetro ? 'text-[var(--retro-gold)]' : 'text-white'}`}>{entry.score}</span>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
+const LeaderboardToggle = ({ tab, onTabChange, isRetro }: { tab: 'my' | 'global', onTabChange: (t: 'my' | 'global') => void, isRetro: boolean }) => (
+  <div className="flex gap-2 mb-4">
+    {(['my', 'global'] as const).map((t) => (
+      <button
+        key={t}
+        onClick={() => onTabChange(t)}
+        className={`flex-1 py-2 rounded-lg text-xs font-bold uppercase tracking-widest transition ${
+          isRetro
+            ? tab === t ? 'retro-btn' : 'bg-[var(--retro-bg)] text-[var(--retro-text-dim)] border border-[var(--retro-border)] hover:border-[var(--retro-cyan)]'
+            : tab === t ? 'bg-white text-purple-600' : 'bg-white/10 text-white/60 hover:bg-white/20'
+        }`}
+      >
+        {t === 'my' ? 'My Scores' : 'Global'}
+      </button>
+    ))}
+  </div>
+);
+
+const ProfileSelector = ({
+  profiles,
+  onSelect,
   onCreateNew, 
   onEdit, 
   onDelete, 
@@ -490,6 +551,9 @@ function DobbleGame() {
   const [isBuildingTheme, setIsBuildingTheme] = useState(false);
   const [randomizerMessage, setRandomizerMessage] = useState<string | null>(null);
   const [savedThemes, setSavedThemes] = useState<any[]>([]);
+  const [globalLeaderboard, setGlobalLeaderboard] = useState<any[]>([]);
+  const [leaderboardTab, setLeaderboardTab] = useState<'my' | 'global'>('my');
+  const [globalLoading, setGlobalLoading] = useState(false);
   const [customThemeName, setCustomThemeName] = useState('');
   const [customThemeIcon, setCustomThemeIcon] = useState('✨');
   const [isSavingTheme, setIsSavingTheme] = useState(false);
@@ -626,7 +690,25 @@ function DobbleGame() {
     } catch (err) {
       console.error('Error saving score:', err);
     }
+    fetchGlobalLeaderboard();
   };
+
+  const fetchGlobalLeaderboard = useCallback(async () => {
+    setGlobalLoading(true);
+    try {
+      const q = query(collection(db, 'scores'), orderBy('score', 'desc'), limit(20));
+      const snapshot = await getDocs(q);
+      setGlobalLeaderboard(snapshot.docs.map((d, idx) => ({
+        id: d.id,
+        rank: idx + 1,
+        ...d.data(),
+      })));
+    } catch (err) {
+      console.error('Error fetching global leaderboard:', err);
+    } finally {
+      setGlobalLoading(false);
+    }
+  }, []);
 
   const handleCreateProfile = async () => {
     if (newName.trim() && user) {
@@ -1526,7 +1608,7 @@ function DobbleGame() {
                 )}
 
                 {activeTab === 'leaderboard' && (
-                  <motion.div 
+                  <motion.div
                     key="leaderboard"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1534,7 +1616,12 @@ function DobbleGame() {
                     transition={{ duration: 0.2 }}
                     className="mb-8"
                   >
-                    <Leaderboard data={leaderboard} />
+                    <LeaderboardToggle tab={leaderboardTab} onTabChange={(t) => { setLeaderboardTab(t); if (t === 'global' && globalLeaderboard.length === 0) fetchGlobalLeaderboard(); }} isRetro={isRetro} />
+                    {leaderboardTab === 'my' ? (
+                      <Leaderboard data={leaderboard} />
+                    ) : (
+                      <GlobalLeaderboard data={globalLeaderboard} currentUserId={user?.uid} isLoading={globalLoading} isRetro={isRetro} onRefresh={fetchGlobalLeaderboard} />
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1715,32 +1802,72 @@ function DobbleGame() {
                   </motion.div>
                 </div>
 
-                <div className="mb-8 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                  <div className="text-left">
-                    <div className="flex items-center gap-4 mb-4">
-                      <div className={`h-px flex-1 ${isRetro ? 'bg-[var(--retro-border)]' : 'bg-gray-100'}`}></div>
-                      <h3 className={`text-[10px] font-bold uppercase tracking-[0.2em] whitespace-nowrap ${isRetro ? 'text-[var(--retro-text-dim)] text-[7px]' : 'text-gray-400'}`}>Leaderboard</h3>
-                      <div className={`h-px flex-1 ${isRetro ? 'bg-[var(--retro-border)]' : 'bg-gray-100'}`}></div>
-                    </div>
-                    <div className="space-y-1">
-                      {leaderboard.map((entry, idx) => (
-                        <div
-                          key={entry.id}
-                          onClick={() => {
-                            setProfileName(entry.name);
-                            localStorage.setItem('dobble_profile', entry.name);
-                          }}
-                          className={`flex items-center justify-between text-sm cursor-pointer p-1.5 rounded-lg transition-colors group ${isRetro ? 'hover:bg-[var(--retro-bg)]' : 'hover:bg-gray-50'}`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className={`w-4 font-bold text-xs ${isRetro ? 'text-[var(--retro-text-dim)]' : 'text-gray-400'}`}>{idx + 1}</span>
-                            <span className={`font-medium ${isRetro ? (entry.name === profileName ? 'text-[var(--retro-cyan)]' : 'text-[var(--retro-text)]') : (entry.name === profileName ? 'text-purple-600 font-bold' : 'text-gray-700 group-hover:text-purple-600')}`}>{entry.name}</span>
-                          </div>
-                          <span className={`font-black ${isRetro ? 'text-[var(--retro-gold)]' : 'text-gray-900'}`}>{entry.highScore || 0}</span>
-                        </div>
-                      ))}
-                    </div>
+                <div className="mb-8 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
+                  <div className="flex gap-2 mb-3">
+                    {(['my', 'global'] as const).map((t) => (
+                      <button
+                        key={t}
+                        onClick={() => { setLeaderboardTab(t); if (t === 'global' && globalLeaderboard.length === 0) fetchGlobalLeaderboard(); }}
+                        className={`flex-1 py-1.5 rounded-lg text-[9px] font-bold uppercase tracking-widest transition ${
+                          isRetro
+                            ? leaderboardTab === t ? 'retro-btn' : 'bg-[var(--retro-bg)] text-[var(--retro-text-dim)] border border-[var(--retro-border)]'
+                            : leaderboardTab === t ? 'bg-purple-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                        }`}
+                      >
+                        {t === 'my' ? 'My Scores' : 'Global'}
+                      </button>
+                    ))}
                   </div>
+
+                  {leaderboardTab === 'my' ? (
+                    <div className="text-left">
+                      <div className="space-y-1">
+                        {leaderboard.map((entry, idx) => (
+                          <div
+                            key={entry.id}
+                            onClick={() => {
+                              setProfileName(entry.name);
+                              localStorage.setItem('dobble_profile', entry.name);
+                            }}
+                            className={`flex items-center justify-between text-sm cursor-pointer p-1.5 rounded-lg transition-colors group ${isRetro ? 'hover:bg-[var(--retro-bg)]' : 'hover:bg-gray-50'}`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className={`w-4 font-bold text-xs ${isRetro ? 'text-[var(--retro-text-dim)]' : 'text-gray-400'}`}>{idx + 1}</span>
+                              <span className={`font-medium ${isRetro ? (entry.name === profileName ? 'text-[var(--retro-cyan)]' : 'text-[var(--retro-text)]') : (entry.name === profileName ? 'text-purple-600 font-bold' : 'text-gray-700 group-hover:text-purple-600')}`}>{entry.name}</span>
+                            </div>
+                            <span className={`font-black ${isRetro ? 'text-[var(--retro-gold)]' : 'text-gray-900'}`}>{entry.highScore || 0}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-left">
+                      {globalLeaderboard.length === 0 ? (
+                        <div className={`p-4 text-sm text-center ${isRetro ? 'text-[var(--retro-text-dim)]' : 'text-gray-400'}`}>
+                          {globalLoading ? 'Loading...' : 'No scores yet'}
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {globalLeaderboard.map((entry) => (
+                            <div
+                              key={entry.id}
+                              className={`flex items-center justify-between text-sm p-1.5 rounded-lg ${
+                                isRetro
+                                  ? `${entry.userId === user?.uid ? 'bg-[var(--retro-bg)] border-l-2 border-l-[var(--retro-cyan)]' : ''}`
+                                  : `${entry.userId === user?.uid ? 'bg-purple-50 border-l-2 border-l-purple-400' : ''}`
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className={`w-4 font-bold text-xs ${isRetro ? (entry.rank === 1 ? 'text-[var(--retro-gold)]' : 'text-[var(--retro-text-dim)]') : (entry.rank === 1 ? 'text-yellow-500' : 'text-gray-400')}`}>{entry.rank}</span>
+                                <span className={`font-medium truncate max-w-[120px] ${isRetro ? 'text-[var(--retro-text)]' : 'text-gray-700'}`}>{entry.profileName}</span>
+                              </div>
+                              <span className={`font-black ${isRetro ? 'text-[var(--retro-gold)]' : 'text-gray-900'}`}>{entry.score}</span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <button

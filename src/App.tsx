@@ -2070,9 +2070,21 @@ function StatsPanel({ onBack }: { onBack: () => void }) {
   };
 
   const money = getMonetizationEstimate();
-  const sortedDays = stats ? Object.entries(stats.gamesPerDay).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14) : [];
+  // Build a full 14-day window (including days with zero games)
+  const last14Days: [string, number][] = (() => {
+    if (!stats) return [];
+    const days: [string, number][] = [];
+    const now = new Date();
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      days.push([key, stats.gamesPerDay[key] || 0]);
+    }
+    return days;
+  })();
   const sortedPlayers = stats ? Object.entries(stats.playerBreakdown).sort(([, a], [, b]) => b.games - a.games) : [];
-  const maxDayGames = sortedDays.length > 0 ? Math.max(...sortedDays.map(([, v]) => v)) : 1;
+  const maxDayGames = last14Days.length > 0 ? Math.max(...last14Days.map(([, v]) => v), 1) : 1;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-4 md:p-8 font-sans">
@@ -2114,13 +2126,16 @@ function StatsPanel({ onBack }: { onBack: () => void }) {
               <h2 className="text-lg font-bold mb-1">Activity (Last 14 Days)</h2>
               <p className="text-white/40 text-xs mb-4">Since {stats.firstGame} ({stats.totalDays} days)</p>
               <div className="flex items-end gap-1 h-24">
-                {sortedDays.reverse().map(([day, count]) => (
-                  <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                    <div
-                      className="w-full bg-purple-500/60 rounded-t-sm min-h-[2px] transition-all"
-                      style={{ height: `${(count / maxDayGames) * 100}%` }}
-                    />
-                    <span className="text-[7px] text-white/30 -rotate-45 origin-left whitespace-nowrap">{day.slice(5)}</span>
+                {last14Days.map(([day, count]) => (
+                  <div key={day} className="flex-1 flex flex-col items-center gap-1 h-full">
+                    <div className="flex-1 w-full flex items-end">
+                      <div
+                        className={`w-full rounded-t-sm transition-all ${count > 0 ? 'bg-purple-500/60' : 'bg-white/5'}`}
+                        style={{ height: count > 0 ? `${Math.max((count / maxDayGames) * 100, 8)}%` : '2px' }}
+                      />
+                    </div>
+                    <span className="text-[7px] text-white/30 whitespace-nowrap">{day.slice(5)}</span>
+                    {count > 0 && <span className="text-[8px] text-white/50 font-bold -mt-0.5">{count}</span>}
                   </div>
                 ))}
               </div>

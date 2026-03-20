@@ -535,6 +535,8 @@ function DobbleGame() {
   const [isPaused, setIsPaused] = useState(false);
   const [gameOver, setGameOver] = useState(false);
   const [feedback, setFeedback] = useState<'correct' | 'incorrect' | null>(null);
+  const [correctClicks, setCorrectClicks] = useState(0);
+  const [incorrectClicks, setIncorrectClicks] = useState(0);
   const [profileName, setProfileName] = useState<string>(() => {
     if (typeof window !== 'undefined' && window.location.search.includes('test')) {
       return 'Tester';
@@ -666,13 +668,17 @@ function DobbleGame() {
     }
   };
 
-  const saveScore = async (finalScore: number) => {
+  const saveScore = async (finalScore: number, correct: number, incorrect: number) => {
     if (!profileName || !user) return;
     try {
       await addDoc(collection(db, 'scores'), {
         profileName,
         userId: user.uid,
         score: finalScore,
+        correctClicks: correct,
+        incorrectClicks: incorrect,
+        totalClicks: correct + incorrect,
+        hitRate: correct + incorrect > 0 ? Math.round((correct / (correct + incorrect)) * 100) : 0,
         timestamp: serverTimestamp(),
       });
       
@@ -840,7 +846,7 @@ function DobbleGame() {
     } else if (timeLeft === 0 && isPlaying) {
       setGameOver(true);
       setIsPlaying(false);
-      saveScore(score);
+      saveScore(score, correctClicks, incorrectClicks);
     }
     return () => clearInterval(timer);
   }, [isPlaying, isPaused, timeLeft]);
@@ -866,6 +872,8 @@ function DobbleGame() {
     setPlayerCard(pCard);
     setCenterCard(cCard);
     setScore(0);
+    setCorrectClicks(0);
+    setIncorrectClicks(0);
     setTimeLeft(60);
     setGameOver(false);
     setIsPaused(false);
@@ -886,13 +894,14 @@ function DobbleGame() {
 
     if (isOnPlayerCard && isOnCenterCard) {
       setFeedback('correct');
+      setCorrectClicks(c => c + 1);
       setScore(s => s + 1);
       
       setTimeout(() => {
         if (deck.length === 0) {
           setGameOver(true);
           setIsPlaying(false);
-          saveScore(score + 1);
+          saveScore(score + 1, correctClicks + 1, incorrectClicks);
         } else {
           setPlayerCard(centerCard);
           const newDeck = [...deck];
@@ -904,6 +913,7 @@ function DobbleGame() {
       }, 200);
     } else {
       setFeedback('incorrect');
+      setIncorrectClicks(c => c + 1);
       setTimeout(() => setFeedback(null), 400);
     }
   }, [deck, playerCard, centerCard, gameOver, isPlaying, score, profileName]);
@@ -946,6 +956,11 @@ function DobbleGame() {
         </div>
       </div>
     );
+  }
+
+  // Admin stats panel — accessible via ?stats URL for authenticated users
+  if (typeof window !== 'undefined' && window.location.search.includes('stats')) {
+    return <StatsPanel onBack={() => { window.history.replaceState({}, '', window.location.pathname); window.location.reload(); }} />;
   }
 
   if (!profileName || isCreatingProfile) {
@@ -1941,6 +1956,257 @@ function Number({ mv, number, height }: { mv: MotionValue; number: number, heigh
     >
       {number}
     </motion.span>
+  );
+}
+
+function StatsPanel({ onBack }: { onBack: () => void }) {
+  const [stats, setStats] = useState<{
+    totalGames: number;
+    uniquePlayers: number;
+    avgScore: number;
+    maxScore: number;
+    gamesPerDay: Record<string, number>;
+    playerBreakdown: Record<string, { games: number; bestScore: number; worstScore: number; totalScore: number; totalCorrect: number; totalIncorrect: number; lastPlayed: string }>;
+    firstGame: string;
+    totalDays: number;
+  } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const snapshot = await getDocs(query(collection(db, 'scores'), orderBy('score', 'desc')));
+        const scores = snapshot.docs.map(d => ({ ...d.data() })) as any[];
+
+        const uniqueUserIds = new Set(scores.map(s => s.userId));
+        const avgScore = scores.length > 0 ? scores.reduce((sum, s) => sum + (s.score || 0), 0) / scores.length : 0;
+        const maxScore = scores.length > 0 ? scores[0].score : 0;
+
+        const gamesPerDay: Record<string, number> = {};
+        const playerBreakdown: Record<string, { games: number; bestScore: number; worstScore: number; totalScore: number; totalCorrect: number; totalIncorrect: number; lastPlayed: string }> = {};
+
+        let earliestDate = new Date();
+        scores.forEach(s => {
+          const date = s.timestamp?.toDate ? s.timestamp.toDate() : new Date(s.timestamp);
+          const dayKey = date.toISOString().split('T')[0];
+          gamesPerDay[dayKey] = (gamesPerDay[dayKey] || 0) + 1;
+          if (date < earliestDate) earliestDate = date;
+
+          const playerKey = s.profileName || 'Unknown';
+          const sc = s.score || 0;
+          if (!playerBreakdown[playerKey]) {
+            playerBreakdown[playerKey] = { games: 0, bestScore: 0, worstScore: Infinity, totalScore: 0, totalCorrect: 0, totalIncorrect: 0, lastPlayed: '' };
+          }
+          const p = playerBreakdown[playerKey];
+          p.games++;
+          p.totalScore += sc;
+          if (sc > p.bestScore) p.bestScore = sc;
+          if (sc < p.worstScore) p.worstScore = sc;
+          p.totalCorrect += s.correctClicks || 0;
+          p.totalIncorrect += s.incorrectClicks || 0;
+          if (!p.lastPlayed || dayKey > p.lastPlayed) p.lastPlayed = dayKey;
+        });
+        // Fix Infinity for players with no games
+        Object.values(playerBreakdown).forEach(p => { if (p.worstScore === Infinity) p.worstScore = 0; });
+
+        const totalDays = Math.max(1, Math.ceil((Date.now() - earliestDate.getTime()) / (1000 * 60 * 60 * 24)));
+
+        setStats({
+          totalGames: scores.length,
+          uniquePlayers: uniqueUserIds.size,
+          avgScore: Math.round(avgScore * 10) / 10,
+          maxScore,
+          gamesPerDay,
+          playerBreakdown,
+          firstGame: earliestDate.toISOString().split('T')[0],
+          totalDays,
+        });
+      } catch (err) {
+        console.error('Error loading stats:', err);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
+
+  // Monetization estimates based on industry benchmarks
+  const getMonetizationEstimate = () => {
+    if (!stats) return null;
+    const dailyActiveUsers = stats.totalGames / stats.totalDays;
+    const monthlyActiveUsers = Math.min(stats.uniquePlayers, dailyActiveUsers * 30);
+
+    // Industry benchmarks for casual mobile games
+    const adRevenuePerDAU = 0.05; // $0.03-0.08 per DAU/day for casual games (rewarded ads + banners)
+    const iapConversionRate = 0.02; // 2% of players buy something
+    const avgIapSpend = 4.99; // Average in-app purchase
+    const subscriptionRate = 0.01; // 1% convert to premium
+    const subscriptionPrice = 2.99; // Monthly premium price
+
+    return {
+      dailyAdRevenue: dailyActiveUsers * adRevenuePerDAU,
+      monthlyAdRevenue: dailyActiveUsers * adRevenuePerDAU * 30,
+      potentialIapRevenue: monthlyActiveUsers * iapConversionRate * avgIapSpend,
+      potentialSubRevenue: monthlyActiveUsers * subscriptionRate * subscriptionPrice,
+      totalMonthlyPotential: (dailyActiveUsers * adRevenuePerDAU * 30) +
+        (monthlyActiveUsers * iapConversionRate * avgIapSpend) +
+        (monthlyActiveUsers * subscriptionRate * subscriptionPrice),
+      dailyActiveUsers: Math.round(dailyActiveUsers * 10) / 10,
+      monthlyActiveUsers: Math.round(monthlyActiveUsers),
+    };
+  };
+
+  const money = getMonetizationEstimate();
+  const sortedDays = stats ? Object.entries(stats.gamesPerDay).sort(([a], [b]) => b.localeCompare(a)).slice(0, 14) : [];
+  const sortedPlayers = stats ? Object.entries(stats.playerBreakdown).sort(([, a], [, b]) => b.games - a.games) : [];
+  const maxDayGames = sortedDays.length > 0 ? Math.max(...sortedDays.map(([, v]) => v)) : 1;
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-4 md:p-8 font-sans">
+      <div className="max-w-4xl mx-auto">
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-black">Match It Analytics</h1>
+            <p className="text-white/50 text-sm mt-1">Admin Dashboard</p>
+          </div>
+          <button onClick={onBack} className="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/20 transition text-sm font-bold">
+            Back to Game
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="text-center py-20 text-white/50">Loading analytics...</div>
+        ) : !stats || stats.totalGames === 0 ? (
+          <div className="text-center py-20 text-white/50">No game data yet. Play some games first!</div>
+        ) : (
+          <>
+            {/* Key Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+              {[
+                { label: 'Total Games', value: stats.totalGames, icon: '🎮' },
+                { label: 'Unique Players', value: stats.uniquePlayers, icon: '👤' },
+                { label: 'Avg Score', value: stats.avgScore, icon: '📊' },
+                { label: 'Best Score', value: stats.maxScore, icon: '🏆' },
+              ].map(({ label, value, icon }) => (
+                <div key={label} className="bg-white/5 border border-white/10 rounded-2xl p-4 backdrop-blur-sm">
+                  <div className="text-2xl mb-1">{icon}</div>
+                  <div className="text-2xl md:text-3xl font-black">{value}</div>
+                  <div className="text-white/40 text-xs font-bold uppercase tracking-wider mt-1">{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Activity Timeline */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 backdrop-blur-sm">
+              <h2 className="text-lg font-bold mb-1">Activity (Last 14 Days)</h2>
+              <p className="text-white/40 text-xs mb-4">Since {stats.firstGame} ({stats.totalDays} days)</p>
+              <div className="flex items-end gap-1 h-24">
+                {sortedDays.reverse().map(([day, count]) => (
+                  <div key={day} className="flex-1 flex flex-col items-center gap-1">
+                    <div
+                      className="w-full bg-purple-500/60 rounded-t-sm min-h-[2px] transition-all"
+                      style={{ height: `${(count / maxDayGames) * 100}%` }}
+                    />
+                    <span className="text-[7px] text-white/30 -rotate-45 origin-left whitespace-nowrap">{day.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Player Profiles */}
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 mb-8 backdrop-blur-sm">
+              <h2 className="text-lg font-bold mb-4">Player Profiles</h2>
+              <div className="space-y-4">
+                {sortedPlayers.map(([name, data]) => {
+                  const avgScore = data.games > 0 ? Math.round((data.totalScore / data.games) * 10) / 10 : 0;
+                  const totalAttempts = data.totalCorrect + data.totalIncorrect;
+                  const hitRate = totalAttempts > 0 ? Math.round((data.totalCorrect / totalAttempts) * 100) : null;
+                  return (
+                    <div key={name} className="bg-white/5 rounded-xl p-4 border border-white/5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-full bg-purple-600/50 flex items-center justify-center text-lg font-bold">
+                            {name[0]?.toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-bold">{name}</div>
+                            <div className="text-white/40 text-xs">Last played: {data.lastPlayed}</div>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xl font-black">{data.games}</div>
+                          <div className="text-white/40 text-[10px] uppercase tracking-wider">games</div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div className="bg-black/20 rounded-lg p-2.5">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider mb-0.5">Best</div>
+                          <div className="font-black text-green-400">{data.bestScore}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-2.5">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider mb-0.5">Worst</div>
+                          <div className="font-black text-red-400">{data.worstScore}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-2.5">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider mb-0.5">Avg Score</div>
+                          <div className="font-black">{avgScore}</div>
+                        </div>
+                        <div className="bg-black/20 rounded-lg p-2.5">
+                          <div className="text-white/40 text-[9px] uppercase tracking-wider mb-0.5">Hit Rate</div>
+                          <div className="font-black">{hitRate !== null ? `${hitRate}%` : '—'}</div>
+                        </div>
+                      </div>
+                      {totalAttempts > 0 && (
+                        <div className="mt-3 flex items-center gap-2">
+                          <div className="flex-1 h-2 bg-black/30 rounded-full overflow-hidden">
+                            <div className="h-full bg-green-500 rounded-full" style={{ width: `${hitRate}%` }} />
+                          </div>
+                          <span className="text-[10px] text-white/40">{data.totalCorrect}✓ {data.totalIncorrect}✗</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Monetization Estimates */}
+            {money && (
+              <div className="bg-gradient-to-br from-green-900/30 to-emerald-900/30 border border-green-500/20 rounded-2xl p-6 mb-8">
+                <h2 className="text-lg font-bold mb-1">Monetization Potential</h2>
+                <p className="text-white/40 text-xs mb-4">
+                  Based on ~{money.dailyActiveUsers} DAU, {money.monthlyActiveUsers} MAU, casual game benchmarks
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <div className="text-green-400 text-xs font-bold uppercase tracking-wider mb-1">Ad Revenue</div>
+                    <div className="text-xl font-black">${money.monthlyAdRevenue.toFixed(2)}<span className="text-sm font-normal text-white/40">/mo</span></div>
+                    <div className="text-white/30 text-xs mt-1">Rewarded ads + banners @ $0.05/DAU/day</div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <div className="text-blue-400 text-xs font-bold uppercase tracking-wider mb-1">In-App Purchases</div>
+                    <div className="text-xl font-black">${money.potentialIapRevenue.toFixed(2)}<span className="text-sm font-normal text-white/40">/mo</span></div>
+                    <div className="text-white/30 text-xs mt-1">2% conversion @ $4.99 avg purchase</div>
+                  </div>
+                  <div className="bg-white/5 rounded-xl p-4">
+                    <div className="text-yellow-400 text-xs font-bold uppercase tracking-wider mb-1">Subscriptions</div>
+                    <div className="text-xl font-black">${money.potentialSubRevenue.toFixed(2)}<span className="text-sm font-normal text-white/40">/mo</span></div>
+                    <div className="text-white/30 text-xs mt-1">1% convert @ $2.99/mo premium</div>
+                  </div>
+                </div>
+                <div className="border-t border-white/10 pt-4 flex items-center justify-between">
+                  <span className="text-white/60 font-bold text-sm">Total Monthly Potential</span>
+                  <span className="text-2xl font-black text-green-400">${money.totalMonthlyPotential.toFixed(2)}</span>
+                </div>
+                <p className="text-white/20 text-[10px] mt-3">
+                  Estimates based on casual game industry averages. Actual results depend on ad network, placement, user engagement, and retention.
+                  Add Cloudflare Web Analytics for accurate visit/pageview data.
+                </p>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 

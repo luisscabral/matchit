@@ -2016,9 +2016,11 @@ function StatsPanel({ onBack }: { onBack: () => void }) {
           p.totalScore += sc;
           if (sc > p.bestScore) p.bestScore = sc;
           if (sc < p.worstScore) p.worstScore = sc;
-          // For older games without click tracking, use score as proxy for correct clicks
-          p.totalCorrect += s.correctClicks != null ? s.correctClicks : sc;
-          p.totalIncorrect += s.incorrectClicks || 0;
+          // Only count click data from games that have tracking
+          if (s.correctClicks != null) {
+            p.totalCorrect += s.correctClicks;
+            p.totalIncorrect += s.incorrectClicks || 0;
+          }
           if (!p.lastPlayed || dayKey > p.lastPlayed) p.lastPlayed = dayKey;
         });
         // Fix Infinity for players with no games
